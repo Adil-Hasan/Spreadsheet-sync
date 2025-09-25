@@ -1,4 +1,4 @@
-import { formatDataFillEmpty, formatMsToTime, isCsvUrl, parseCsv } from './functions';
+import { formatDataFillEmpty, formatMsToTime } from './functions';
 import { logger } from './logger';
 import { ChangeTypes, LoggerType, RequestMessage, RequestType, SelectedNodesInfo, SelectedNodeType, SpreadsheetData, SpreadsheetDataSheetsInfo, SpreadsheetSheetsData, SpreadsheetSingleSheetData, TooltipTheme, WindowSize } from './models';
 import { isStringType } from './regex-types';
@@ -20,19 +20,21 @@ let layerSelectionNames: string[];
 
 // spreadsheet data
 let spreadsheetData: SpreadsheetData;
+let uploadedCsvTable: SpreadsheetSingleSheetData | null = null;
+let uploadedCsvTitle: string | null = null;
 
 // if on advanced mode window
 let isPreviewOpen: boolean = false;
 
-// elems
-const buttonReCheck = document.getElementById('btn-re-check-link') as HTMLButtonElement;
-const cornerResize = document.getElementById('corner-resize');
+// elems (some may not exist in simplified UI)
+const buttonReCheck = document.getElementById('btn-re-check-link') as HTMLButtonElement | null;
+const cornerResize = document.getElementById('corner-resize') as HTMLElement | null;
 
-const nodesSelectedInfo = document.getElementById('nodes-selected-info') as HTMLElement;
-const nodesSelectedCount = nodesSelectedInfo.querySelector('.nodes-count') as HTMLElement;
-const nodesSelectedLayersToChange = nodesSelectedInfo.querySelector('.layers-to-change') as HTMLElement;
+const nodesSelectedInfo = document.getElementById('nodes-selected-info') as HTMLElement | null;
+const nodesSelectedCount = nodesSelectedInfo?.querySelector('.nodes-count') as HTMLElement | null;
+const nodesSelectedLayersToChange = nodesSelectedInfo?.querySelector('.layers-to-change') as HTMLElement | null;
 
-const totalLayerChanges = document.querySelector('#title .total-layer-changes') as HTMLElement;
+const totalLayerChanges = document.querySelector('#title .total-layer-changes') as HTMLElement | null;
 
 // const sheetsSelector = document.getElementById('sheets-selector');
 
@@ -90,8 +92,8 @@ window.onmessage = async (event) => {
       const sectionMessage = document.getElementById('section-message');
       const sectionSync = document.getElementById('section-sync');
       const titleElem = document.querySelector('#title') as HTMLElement;
-      const countElem = titleElem.querySelector('.count') as HTMLElement;
-      const messageElem = titleElem.querySelector('.message') as HTMLElement;
+      const countElem = titleElem?.querySelector('.count') as HTMLElement;
+      const messageElem = titleElem?.querySelector('.message') as HTMLElement;
       const subtitleElem = document.querySelector('#subtitle') as HTMLElement;
       const buttonSync = document.querySelector('#sync') as HTMLButtonElement;
 
@@ -102,37 +104,37 @@ window.onmessage = async (event) => {
 
       updateTooltipSelections();
 
-      removeClsStartingWith([sectionMessage, countElem, sectionSync], 'bg-');
+      removeClsStartingWith([sectionMessage, countElem, sectionSync].filter(Boolean), 'bg-');
 
-      removeCls(titleElem, ['text-success', 'text-warning', 'text-error']);
-      addCls([subtitleElem, countElem], 'hidden');
+      if (titleElem) { removeCls(titleElem, ['text-success', 'text-warning', 'text-error']); }
+      addCls([subtitleElem, countElem].filter(Boolean), 'hidden');
 
-      if (event.data.pluginMessage.color === 'success') {
+      if (event.data.pluginMessage.color === 'success' && buttonSync) {
         buttonSync.disabled = false;
-        addCls([sectionMessage, sectionSync], 'bg-success');
-        addCls(countElem, 'bg-success-full');
-        addCls(titleElem, 'text-success');
-        removeCls([subtitleElem, countElem], 'hidden');
+        addCls([sectionMessage, sectionSync].filter(Boolean), 'bg-success');
+        if (countElem) addCls(countElem, 'bg-success-full');
+        if (titleElem) addCls(titleElem, 'text-success');
+        removeCls([subtitleElem, countElem].filter(Boolean), 'hidden');
       }
 
-      if (event.data.pluginMessage.color === 'warning') {
+      if (event.data.pluginMessage.color === 'warning' && buttonSync) {
         buttonSync.disabled = true;
-        addCls([sectionMessage, sectionSync], 'bg-warning');
-        addCls(countElem, 'bg-warning-full');
-        addCls(titleElem, 'text-warning');
-        removeCls([subtitleElem, countElem], 'hidden');
+        addCls([sectionMessage, sectionSync].filter(Boolean), 'bg-warning');
+        if (countElem) addCls(countElem, 'bg-warning-full');
+        if (titleElem) addCls(titleElem, 'text-warning');
+        removeCls([subtitleElem, countElem].filter(Boolean), 'hidden');
       }
 
-      if (event.data.pluginMessage.color === 'error') {
+      if (event.data.pluginMessage.color === 'error' && buttonSync) {
         buttonSync.disabled = true;
-        addCls([sectionMessage, sectionSync], 'bg-error');
-        addCls(countElem, 'bg-error-full');
-        addCls(titleElem, 'text-error');
-        removeCls([subtitleElem, countElem], 'hidden');
+        addCls([sectionMessage, sectionSync].filter(Boolean), 'bg-error');
+        if (countElem) addCls(countElem, 'bg-error-full');
+        if (titleElem) addCls(titleElem, 'text-error');
+        removeCls([subtitleElem, countElem].filter(Boolean), 'hidden');
       }
-      countElem.querySelector('span').innerText = event.data.pluginMessage.layerCount;
-      messageElem.innerText = event.data.pluginMessage.message;
-      if (event.data.pluginMessage.description) {
+      if (countElem) countElem.querySelector('span').innerText = event.data.pluginMessage.layerCount;
+      if (messageElem) messageElem.innerText = event.data.pluginMessage.message;
+      if (event.data.pluginMessage.description && subtitleElem) {
         subtitleElem.innerText = event.data.pluginMessage.description;
       }
     }
@@ -183,7 +185,7 @@ window.onmessage = async (event) => {
       });
     }
 
-    if (event.data.pluginMessage.type === 'update-nodes-count') {
+    if (event.data.pluginMessage.type === 'update-nodes-count' && nodesSelectedInfo && nodesSelectedCount && nodesSelectedLayersToChange && totalLayerChanges) {
       const selectedNodesInfo: SelectedNodesInfo = event?.data?.pluginMessage?.selectedNodesInfo;
       const totalLayerChangesCount: number = selectedNodesInfo.totalLayerChanges;
       const nodesLength = selectedNodesInfo.nodes.length;
@@ -278,34 +280,40 @@ window.onmessage = async (event) => {
           logger(LoggerType.UI, 'get-api-data-values - data success');
           if (!event.data.pluginMessage.isCheckUrl) {
             let tableValues: SpreadsheetSheetsData;
+            let normalizedForCode: any;
+
             try {
               const dataParsed = JSON.parse(data);
-              if (dataParsed?.values) { // spreadsheet with only one tab (sheet)
+              if (dataParsed?.values) { // single sheet
                 tableValues = [dataParsed.values];
-              } else if (dataParsed?.valueRanges) { // spreadsheet with multiple tabs (sheets)
+              } else if (dataParsed?.valueRanges) { // multiple sheets
                 tableValues = dataParsed.valueRanges.map(sheet => sheet.values);
               }
             } catch (e) {
-              // CSV fallback: parse to single-sheet values
-              const rows = parseCsv(data);
-              tableValues = [rows];
-              // Build minimal spreadsheetData metadata if missing
-              if (!spreadsheetData) {
-                spreadsheetData = {
-                  properties: { title: 'CSV' },
-                  sheets: [{ title: 'Sheet1', rowCount: rows.length, columnCount: rows[0] ? rows[0].length : 0, selected: true }]
-                };
-              }
+              const csvTable = parseCsvToTable(data);
+              tableValues = [csvTable];
+
+              const url = event.data.pluginMessage.url as string;
+              const title = getCsvTitleFromUrl(url);
+              spreadsheetData = {
+                properties: { title },
+                sheets: [{ title, rowCount: csvTable.length, columnCount: csvTable[0]?.length || 0, selected: true }]
+              } as any;
             }
 
             crateTableAndJsonTabsEachSheet(tableValues);
-            // updateSheetToggleButtons();
+
+            if (tableValues.length === 1) {
+              normalizedForCode = { values: tableValues[0] };
+            } else {
+              normalizedForCode = { valueRanges: tableValues.map(v => ({ values: v })) };
+            }
 
             window.parent.postMessage(
               {
                 pluginMessage: {
                   type: 'spreadsheet-data',
-                  data,
+                  data: JSON.stringify(normalizedForCode),
                   isPreview: event.data.pluginMessage.isPreview,
                   isCheckUrl: event.data.pluginMessage.isCheckUrl,
                   spreadsheetData: event.data.pluginMessage.spreadsheetData
@@ -326,61 +334,167 @@ window.onmessage = async (event) => {
 
 // listeners --------------------
 
-// listeners: add input url listeners
-document.getElementById('api-url').addEventListener('input', () => { debounce(checkUrlPublic()); updateInputUrl(); }, false);
-document.getElementById('api-url').addEventListener('focus', (event) => { (event.target as HTMLInputElement).select(); updateInputUrl(); });
+// listeners: add input url listeners (not present in simplified UI)
+const apiUrlInput = document.getElementById('api-url') as HTMLInputElement | null;
+if (apiUrlInput) {
+  apiUrlInput.addEventListener('input', () => { debounce(checkUrlPublic()); updateInputUrl(); }, false);
+  apiUrlInput.addEventListener('focus', (event) => { (event.target as HTMLInputElement).select(); updateInputUrl(); });
+}
 
-// listeners: sync
-document.getElementById('sync').addEventListener('click', () => {
+// listeners: CSV file upload
+const csvInput = document.getElementById('csv-file') as HTMLInputElement;
+if (csvInput) {
+  csvInput.addEventListener('change', async () => {
+    const file = csvInput.files && csvInput.files[0];
+    if (!file) {
+      uploadedCsvTable = null;
+      uploadedCsvTitle = null;
+      return;
+    }
+    const text = await file.text();
+    uploadedCsvTable = parseCsvToTable(text);
+    uploadedCsvTitle = (file.name || 'CSV').replace(/\.csv$/i, '') || 'CSV';
+
+    // Build spreadsheet meta and send to plugin immediately
+    spreadsheetData = {
+      properties: { title: uploadedCsvTitle },
+      sheets: [{ title: uploadedCsvTitle, rowCount: uploadedCsvTable.length, columnCount: uploadedCsvTable[0]?.length || 0, selected: true }] as any
+    } as any;
+
+    const normalizedForCode = { values: uploadedCsvTable };
+    const renameNumbers = (document.getElementById('rename-numbers') as HTMLInputElement | null)?.checked || false;
+    window.parent.postMessage(
+      {
+        pluginMessage: {
+          type: 'spreadsheet-data',
+          data: JSON.stringify(normalizedForCode),
+          isPreview: false,
+          isCheckUrl: false,
+          spreadsheetData,
+          renameNumbers
+        }
+      },
+      '*'
+    );
+
+    // Allow selecting the same file again without needing to restart
+    try { (csvInput as HTMLInputElement).value = ''; } catch {}
+  });
+}
+
+// listeners: upload button to trigger hidden file input
+const btnUploadCsv = document.getElementById('btn-upload-csv') as HTMLButtonElement | null;
+if (btnUploadCsv && csvInput) {
+  btnUploadCsv.addEventListener('click', () => csvInput.click());
+}
+
+// listeners: sync (not present in simplified UI)
+const syncBtn = document.getElementById('sync') as HTMLButtonElement | null;
+if (syncBtn) syncBtn.addEventListener('click', () => {
   logger(LoggerType.UI, 'Click: sync');
-  const inputValue = getInputUrlValue();
-  window.parent.postMessage(
-    { pluginMessage: { type: 'get-data', url: inputValue, isPreview: false, isCheckUrl: false, spreadsheetData } },
-    '*'
-  );
+  if (uploadedCsvTable) {
+    // Use uploaded CSV data directly
+    const normalizedForCode = { values: uploadedCsvTable };
+    const renameNumbers = (document.getElementById('rename-numbers') as HTMLInputElement | null)?.checked || false;
+    window.parent.postMessage(
+      {
+        pluginMessage: {
+          type: 'spreadsheet-data',
+          data: JSON.stringify(normalizedForCode),
+          isPreview: false,
+          isCheckUrl: false,
+          spreadsheetData,
+          renameNumbers
+        }
+      },
+      '*'
+    );
+  } else {
+    const inputValue = getInputUrlValue();
+    const renameNumbers = (document.getElementById('rename-numbers') as HTMLInputElement | null)?.checked || false;
+    window.parent.postMessage(
+      { pluginMessage: { type: 'get-data', url: inputValue, isPreview: false, isCheckUrl: false, spreadsheetData, renameNumbers } },
+      '*'
+    );
+  }
 });
 
 // listeners: preview-data
-document.getElementById('preview-data').onclick = () => {
+const previewDataBtn = document.getElementById('preview-data') as HTMLButtonElement | null;
+if (previewDataBtn) previewDataBtn.onclick = () => {
   logger(LoggerType.UI, 'Click: preview-data');
-  const inputValue = getInputUrlValue();
   togglePreview(isPreviewOpen ? false : true);
-  window.parent.postMessage(
-    { pluginMessage: { type: 'get-data', url: inputValue, isPreview: true, isCheckUrl: false, spreadsheetData } },
-    '*'
-  );
+  if (uploadedCsvTable) {
+    const normalizedForCode = { values: uploadedCsvTable };
+    const renameNumbers = (document.getElementById('rename-numbers') as HTMLInputElement | null)?.checked || false;
+    // Build spreadsheetData meta if missing
+    if (!spreadsheetData) {
+      const title = uploadedCsvTitle || 'CSV';
+      spreadsheetData = {
+        properties: { title },
+        sheets: [{ title, rowCount: uploadedCsvTable.length, columnCount: uploadedCsvTable[0]?.length || 0, selected: true }] as any
+      } as any;
+    }
+    crateTableAndJsonTabsEachSheet([uploadedCsvTable]);
+    window.parent.postMessage(
+      {
+        pluginMessage: {
+          type: 'spreadsheet-data',
+          data: JSON.stringify(normalizedForCode),
+          isPreview: true,
+          isCheckUrl: false,
+          spreadsheetData,
+          renameNumbers
+        }
+      },
+      '*'
+    );
+  } else {
+    const inputValue = getInputUrlValue();
+    const renameNumbers = (document.getElementById('rename-numbers') as HTMLInputElement | null)?.checked || false;
+    window.parent.postMessage(
+      { pluginMessage: { type: 'get-data', url: inputValue, isPreview: true, isCheckUrl: false, spreadsheetData, renameNumbers } },
+      '*'
+    );
+  }
 };
 
 // listeners: open more info modal
-const modalInfo = document.getElementById('more-info-modal') as HTMLElement;
-document.getElementById('more-info').onclick = () => {
-  modalInfo.style.display = 'block';
-  removeCls(modalInfo, 'out');
-};
+const modalInfo = document.getElementById('more-info-modal') as HTMLElement | null;
+const moreInfoBtn = document.getElementById('more-info') as HTMLElement | null;
+if (moreInfoBtn && modalInfo) {
+  moreInfoBtn.onclick = () => {
+    modalInfo.style.display = 'block';
+    removeCls(modalInfo, 'out');
+  };
+}
 
 // listeners: close more info modal
-[modalInfo.querySelector('.btn-close-modal'), modalInfo.querySelector('.modal-overlay')].forEach(closeTriggers => {
-  closeTriggers.addEventListener('click', () => {
-    addCls(modalInfo, 'out');
+if (modalInfo) {
+  [modalInfo.querySelector('.btn-close-modal'), modalInfo.querySelector('.modal-overlay')].forEach(closeTriggers => {
+    if (closeTriggers) closeTriggers.addEventListener('click', () => {
+      addCls(modalInfo, 'out');
 
-    const modalOverlay = modalInfo.querySelector('.modal-overlay');
-    const style = getComputedStyle(modalOverlay, 'animation');
-    const styleAnimationDuration = parseFloat(style.animationDuration);
-    const styleAnimationDurationNumber = styleAnimationDuration * 1000;
+      const modalOverlay = modalInfo.querySelector('.modal-overlay');
+      const style = getComputedStyle(modalOverlay as Element, 'animation');
+      const styleAnimationDuration = parseFloat((style as any).animationDuration || '0');
+      const styleAnimationDurationNumber = styleAnimationDuration * 1000;
 
-    setTimeout(() => {
-      modalInfo.style.display = 'none';
-      removeCls(modalInfo, 'out');
-    }, styleAnimationDurationNumber);
-  })
-});
+      setTimeout(() => {
+        modalInfo.style.display = 'none';
+        removeCls(modalInfo, 'out');
+      }, styleAnimationDurationNumber);
+    })
+  });
+}
 
 // listeners: re-check link
-buttonReCheck.onclick = () => {
-  checkUrlPublic();
-
-  toggleReCheckButton(true);
-};
+if (buttonReCheck) {
+  buttonReCheck.onclick = () => {
+    checkUrlPublic();
+    toggleReCheckButton(true);
+  };
+}
 
 // listeners: resize window (only when on advanced mode)
 function resizeWindow(event) {
@@ -390,14 +504,16 @@ function resizeWindow(event) {
   };
   parent.postMessage( { pluginMessage: { type: 'window-resize', size: size }}, '*');
 }
-cornerResize.onpointerdown = (event) => {
-  cornerResize.onpointermove = resizeWindow;
-  cornerResize.setPointerCapture(event.pointerId);
-};
-cornerResize.onpointerup = (event) => {
-  cornerResize.onpointermove = null;
-  cornerResize.releasePointerCapture(event.pointerId);
-};
+if (cornerResize) {
+  cornerResize.onpointerdown = (event) => {
+    cornerResize.onpointermove = resizeWindow as any;
+    (cornerResize as any).setPointerCapture((event as any).pointerId);
+  };
+  cornerResize.onpointerup = (event) => {
+    cornerResize.onpointermove = null;
+    (cornerResize as any).releasePointerCapture((event as any).pointerId);
+  };
+}
 
 // listeners: add body class when SHIFT key is down
 const body = document.querySelector('body');
@@ -413,9 +529,12 @@ window.addEventListener('keyup', (event) => {
 });
 
 // listeners: when mouse enters the plugin window gove it focus
-document.querySelector('.wrapper').addEventListener('mouseenter', () => {
-  window.focus();
-});
+const wrapper = document.querySelector('.wrapper');
+if (wrapper) {
+  wrapper.addEventListener('mouseenter', () => {
+    window.focus();
+  });
+}
 
 
 
@@ -423,47 +542,47 @@ document.querySelector('.wrapper').addEventListener('mouseenter', () => {
 
 // input: get clean input value
 function getInputUrlValue() {
-  const textbox = document.getElementById('api-url') as HTMLInputElement;
-  return textbox.value.trim();
+  const textbox = document.getElementById('api-url') as HTMLInputElement | null;
+  return (textbox?.value || '').trim();
 }
 
 // input: set input value local storage
 function updateInputUrl() {
   const url = getInputUrlValue();
-  const sectionSheetsUrl = document.getElementById('section-sheets-url') as HTMLElement;
-  const urlValidStatus = document.getElementById('sheet-url-valid') as HTMLElement;
+  const sectionSheetsUrl = document.getElementById('section-sheets-url') as HTMLElement | null;
+  const urlValidStatus = document.getElementById('sheet-url-valid') as HTMLElement | null;
 
-  removeClsStartingWith(sectionSheetsUrl, 'bg-');
-  removeCls(urlValidStatus, ['text-success', 'text-warning', 'text-error']);
-  addCls(urlValidStatus, 'hidden');
+  if (sectionSheetsUrl && urlValidStatus) {
+    removeClsStartingWith(sectionSheetsUrl, 'bg-');
+    removeCls(urlValidStatus, ['text-success', 'text-warning', 'text-error']);
+    addCls(urlValidStatus, 'hidden');
 
-  if (url !== '') {
-    const urlValid = checkUrlIsValid(url);
+    if (url !== '') {
+      const urlValid = checkUrlIsValid(url);
 
-    if (urlValid) {
-      sectionSheetsUrl.classList.add('bg-success');
-      urlValidStatus.innerText = '✅ Url valid';
-      addCls(urlValidStatus, 'text-success');
-      removeCls(urlValidStatus, 'hidden');
+      if (urlValid) {
+        sectionSheetsUrl.classList.add('bg-success');
+        urlValidStatus.innerText = '✅ Url valid';
+        addCls(urlValidStatus, 'text-success');
+        removeCls(urlValidStatus, 'hidden');
+      } else {
+        sectionSheetsUrl.classList.add('bg-error');
+        urlValidStatus.innerText = '⛔️ Url invalid';
+        addCls(urlValidStatus, 'text-error');
+        removeCls(urlValidStatus, 'hidden');
+      }
     } else {
-      sectionSheetsUrl.classList.add('bg-error');
-      urlValidStatus.innerText = '⛔️ Url invalid';
-      addCls(urlValidStatus, 'text-error');
+      sectionSheetsUrl.classList.add('bg-warning');
+      urlValidStatus.innerText = '⚠️ Url not entered';
+      addCls(urlValidStatus, 'text-warning');
       removeCls(urlValidStatus, 'hidden');
     }
-  } else {
-    sectionSheetsUrl.classList.add('bg-warning');
-    urlValidStatus.innerText = '⚠️ Url not entered';
-    addCls(urlValidStatus, 'text-warning');
-    removeCls(urlValidStatus, 'hidden');
   }
 
   window.parent.postMessage(
     { pluginMessage: { type: 'input-set', value: url } },
     '*'
   );
-
-  updatePreviewButton(url);
 }
 
 
@@ -472,19 +591,25 @@ function updateInputUrl() {
 
 function togglePreview(expand: boolean): void {
   logger(LoggerType.UI, 'togglePreview()');
-  const sectionHowTo = document.getElementById('section-how-to') as HTMLElement;
-  const previewSection = document.getElementById('preview-section') as HTMLElement;
-  const previewDataBtn = document.getElementById('preview-data') as HTMLButtonElement;
+  const sectionHowTo = document.getElementById('section-how-to') as HTMLElement | null;
+  const previewSection = document.getElementById('preview-section') as HTMLElement | null;
+  const previewDataBtn = document.getElementById('preview-data') as HTMLButtonElement | null;
 
-  previewSection.classList.toggle('accordion-collapsed');
-  previewSection.classList.toggle('accordion-expanded');
+  if (previewSection) {
+    previewSection.classList.toggle('accordion-collapsed');
+    previewSection.classList.toggle('accordion-expanded');
+  }
 
-  previewDataBtn.classList.toggle('invisible');
+  if (previewDataBtn) {
+    previewDataBtn.classList.toggle('invisible');
+  }
 
-  cornerResize.classList.toggle('hidden');
+  if (cornerResize) cornerResize.classList.toggle('hidden');
 
-  sectionHowTo.classList.toggle('accordion-collapsed');
-  sectionHowTo.classList.toggle('accordion-expanded');
+  if (sectionHowTo) {
+    sectionHowTo.classList.toggle('accordion-collapsed');
+    sectionHowTo.classList.toggle('accordion-expanded');
+  }
 
   // if is opened add tooltip listeners to images
   if (expand) {
@@ -537,9 +662,9 @@ function checkUrlIsValid(url: string): boolean {
   var validLink = new RegExp(/^(ftp|http|https):\/\/[^ "]+$/);
   const urlValid = validLink.test(url.trim());
   const urlPrefix = 'https://docs.google.com/spreadsheets';
+  const isCsv = isCsvUrl(url);
 
-  // accept either Google Sheets URL or a CSV URL
-  return urlValid && (url.startsWith(urlPrefix) || isCsvUrl(url));
+  return urlValid && (url.startsWith(urlPrefix) || isCsv);
 }
 
 // url: check if google spreadsheet is public
@@ -548,21 +673,21 @@ function checkUrlPublic() {
 
   updatePreviewButton(url);
 
-  if (checkUrlIsValid(url)) {
-    // CSV doesn't need public check via Google API
-    if (isCsvUrl(url)) {
-      sheetIsPublic = true;
-      updatePreviewButton(url);
-      setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
-      return;
-    }
-    window.parent.postMessage(
-      { pluginMessage: { type: 'get-data', url, isPreview: false, isCheckUrl: true } },
-      '*'
-    );
-  } else {
-    setUrlRequestStatus(RequestType.RESET);
+  if (!checkUrlIsValid(url)) { setUrlRequestStatus(RequestType.RESET); return; }
+
+  // CSV doesn't require Google Sheets public check
+  if (isCsvUrl(url)) {
+    sheetIsPublic = true;
+    setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
+    updatePreviewButton(url);
+    toggleReCheckButton(false);
+    return;
   }
+
+  window.parent.postMessage(
+    { pluginMessage: { type: 'get-data', url, isPreview: false, isCheckUrl: true } },
+    '*'
+  );
 }
 
 
@@ -581,7 +706,7 @@ function fetchData(data: any): Promise<any> {
       reject(RequestMessage.ERROR_GENERIC);
     }
     request.onload = () => {
-      // Try JSON first (Google Sheets), otherwise treat as CSV/plain text
+      // Try JSON (Google Sheets). If parse fails, treat as CSV/text and resolve
       try {
         const jsonParsed = JSON.parse(request.response);
         if (jsonParsed) {
@@ -590,22 +715,15 @@ function fetchData(data: any): Promise<any> {
             updatePreviewButton(getInputUrlValue());
             setUrlRequestStatus(RequestType.ERROR, RequestMessage.SHEET_NOT_PUBLIC);
             reject(RequestMessage.ERROR_GENERIC);
-            return;
           } else {
             sheetIsPublic = true;
             updatePreviewButton(getInputUrlValue());
             setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
             resolve(request.response);
-            return;
           }
         }
       } catch (e) {
-        // CSV/text response: consider reachable == success
-        sheetIsPublic = true;
-        updatePreviewButton(getInputUrlValue());
-        setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
         resolve(request.response);
-        return;
       }
 
       toggleReCheckButton(false);
@@ -634,31 +752,81 @@ function fetchData(data: any): Promise<any> {
 // }
 
 function setUrlRequestStatus(requestType: RequestType, message: RequestMessage = null): void {
-  const sectionHowTo = document.getElementById('section-how-to') as HTMLElement;
-  const publishedStatus = document.getElementById('publish-status') as HTMLElement;
+  const sectionHowTo = document.getElementById('section-how-to') as HTMLElement | null;
+  const publishedStatus = document.getElementById('publish-status') as HTMLElement | null;
 
   if (requestType === RequestType.RESET) {
-    removeClsStartingWith(sectionHowTo, 'bg-');
-    removeCls(publishedStatus, ['text-success', 'text-error']);
-    addCls(publishedStatus, 'hidden');
+    if (sectionHowTo) removeClsStartingWith(sectionHowTo, 'bg-');
+    if (publishedStatus) { removeCls(publishedStatus, ['text-success', 'text-error']); addCls(publishedStatus, 'hidden'); }
   }
 
   if (requestType === RequestType.ERROR) {
-    removeClsStartingWith(sectionHowTo, 'bg-');
-    addCls(sectionHowTo, 'bg-error');
-    addCls(publishedStatus, 'text-error');
-    removeCls(publishedStatus, 'hidden');
-    publishedStatus.innerText = message;
+    if (sectionHowTo) { removeClsStartingWith(sectionHowTo, 'bg-'); addCls(sectionHowTo, 'bg-error'); }
+    if (publishedStatus) { addCls(publishedStatus, 'text-error'); removeCls(publishedStatus, 'hidden'); publishedStatus.innerText = message; }
     toggleReCheckButton(false);
   }
 
   if (requestType === RequestType.SUCCESS) {
-    removeClsStartingWith(sectionHowTo, 'bg-');
-    addCls(sectionHowTo, 'bg-success');
-    addCls(publishedStatus, 'text-success');
-    removeCls(publishedStatus, 'hidden');
-    publishedStatus.innerText = message;
+    if (sectionHowTo) { removeClsStartingWith(sectionHowTo, 'bg-'); addCls(sectionHowTo, 'bg-success'); }
+    if (publishedStatus) { addCls(publishedStatus, 'text-success'); removeCls(publishedStatus, 'hidden'); publishedStatus.innerText = message; }
   }
+}
+
+// csv --------------------
+function isCsvUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  if (lower.endsWith('.csv')) return true;
+  try {
+    const u = new URL(url);
+    const pathnameCsv = u.pathname.toLowerCase().endsWith('.csv');
+    const contentParamCsv = (u.searchParams.get('format') || u.searchParams.get('alt') || '').toLowerCase() === 'csv';
+    return pathnameCsv || contentParamCsv;
+  } catch {
+    return false;
+  }
+}
+
+function getCsvTitleFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const pathParts = u.pathname.split('/').filter(Boolean);
+    const filePart = pathParts[pathParts.length - 1] || 'CSV';
+    return decodeURIComponent(filePart.replace(/\.csv$/i, '')) || 'CSV';
+  } catch {
+    return 'CSV';
+  }
+}
+
+function parseCsvToTable(csvText: string): SpreadsheetSingleSheetData {
+  // Simple RFC4180-ish parser supporting quoted fields with commas and quotes
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (csvText[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else { field += char; }
+    } else {
+      if (char === '"') { inQuotes = true; }
+      else if (char === ',') { row.push(field); field = ''; }
+      else if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (char === '\r') { /* ignore */ }
+      else { field += char; }
+    }
+  }
+  // push last field/row
+  row.push(field);
+  rows.push(row);
+
+  // Trim possible empty trailing row
+  if (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') {
+    rows.pop();
+  }
+  return rows as SpreadsheetSingleSheetData;
 }
 
 
@@ -921,9 +1089,9 @@ function updateTableSelection(): void {
 
 // buttons: preview btn disabled state
 function updatePreviewButton(url: string) {
-  const buttonPreviewData = document.querySelector('#preview-data') as HTMLButtonElement;
-
-  if (checkUrlIsValid(url) && sheetIsPublic) {
+  const buttonPreviewData = document.querySelector('#preview-data') as HTMLButtonElement | null;
+  if (!buttonPreviewData) return;
+  if ((uploadedCsvTable && uploadedCsvTable.length > 0) || (checkUrlIsValid(url) && sheetIsPublic)) {
     buttonPreviewData.disabled = false;
   } else {
     buttonPreviewData.disabled = true;
@@ -931,6 +1099,7 @@ function updatePreviewButton(url: string) {
 }
 
 function toggleReCheckButton(check: boolean): void {
+  if (!buttonReCheck) return;
   if (check) {
     buttonReCheck.disabled = check;
     addCls(buttonReCheck, 'checking');

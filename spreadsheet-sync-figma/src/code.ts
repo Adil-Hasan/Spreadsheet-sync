@@ -6,7 +6,7 @@ import { API_KEY } from './api-key';
 import { ChangeTypes, DataProcess, layerChangesInfoTotal, LayerNameSuffix, LoggerType, NodeRowRand, OutputNodeError, OutputVars, SelectedNodesInfo, SelectedNode, SpreadsheetData, SpreadsheetSheetsData, SuffixSpecial, TextHasPlaceholders, UrlData, UrlDataType, WindowSize, SelectedNodeType } from './models';
 import { appWindowBigStartSize, appWindowMinSize, layerNamePrefix, debugSelectedNodes } from './variables';
 import { logger, loggerGetTime, loggerTimeStamp } from './logger';
-import { formatDataFillEmpty, formatMsToTime, showLoadingNotification, isCsvUrl, parseCsv } from './functions';
+import { formatDataFillEmpty, formatMsToTime, showLoadingNotification } from './functions';
 import { loadFontsAsync } from './load-fonts-async';
 
 
@@ -127,18 +127,16 @@ figma.ui.onmessage = async (msg) => {
     let urlData: UrlData;
     let msgType: string;
 
-    if (isCsvUrl(msg.url)) {
-      // For CSV we pass the URL directly to the UI to fetch raw text
-      urlData = { url: msg.url, type: UrlDataType.VALUES };
-      msgType = 'get-api-data-values';
+    if (msg.isCheckUrl) {
+      urlData = getSpreadsheetData(msg.url, UrlDataType.SHEET);
+      msgType = 'get-api-data-sheet';
     } else {
-      if (msg.isCheckUrl) {
-        urlData = getSpreadsheetData(msg.url, UrlDataType.SHEET);
-        msgType = 'get-api-data-sheet';
+      if (isCsvUrl(msg.url)) {
+        urlData = { url: msg.url, type: UrlDataType.VALUES };
       } else {
         urlData = getSpreadsheetData(msg.url, UrlDataType.VALUES, msg.spreadsheetData);
-        msgType = 'get-api-data-values';
       }
+      msgType = 'get-api-data-values';
     }
 
     figma.ui.postMessage({
@@ -148,23 +146,19 @@ figma.ui.onmessage = async (msg) => {
       isPreview: msg.isPreview,
       isCheckUrl: msg.isCheckUrl,
       spreadsheetData: msg.spreadsheetData,
+      renameNumbers: (msg as any).renameNumbers || false,
     });
   }
 
   // parse spreadsheet data and process layers
   if (msg.type === 'spreadsheet-data') {
+    const data = JSON.parse(msg.data);
     let tableValues: SpreadsheetSheetsData;
-    try {
-      const data = JSON.parse(msg.data);
-      if (data?.values) { // spreadsheet with only one tab (sheet)
-        tableValues = [data.values];
-      } else if (data?.valueRanges) { // spreadsheet with multiple tabs (sheets)
-        tableValues = data.valueRanges.map(sheet => sheet.values);
-      }
-    } catch (e) {
-      // CSV fallback
-      const rows = parseCsv(msg.data);
-      tableValues = [rows];
+
+    if (data?.values) { // spreadsheet with only one tab (sheet)
+      tableValues = [data.values];
+    } else if (data?.valueRanges) { // spreadsheet with multiple tabs (sheets)
+      tableValues = data.valueRanges.map(sheet => sheet.values);
     }
 
     const dataProcessArray: DataProcess[] = [];
@@ -226,6 +220,13 @@ figma.ui.onmessage = async (msg) => {
     if (msg.isPreview) {
       figma.ui.postMessage({ type: 'populate-json-preview', data: dataProcessArray });
     } else {
+      // Duplicate step (runs before sync):
+      // Use first sheet's data length (already excludes the header) as rows-1
+      const firstSheetDataLength = dataProcessArray?.[0]?.data?.length || 0;
+      if (firstSheetDataLength > 0) {
+        duplicateSelection(firstSheetDataLength, (msg as any).renameNumbers === true, dataProcessArray?.[0]?.data || []);
+      }
+
       figmaPopulateSheetSync(dataProcessArray);
     }
   }
@@ -387,6 +388,67 @@ function figmaPopulateSheetSync(data: DataProcess[]): void {
       prepareToChangeLayers(obj.node, obj.node.name);
     }
   });
+}
+
+// Duplicate current selection N-1 times (where N is data rows) before syncing
+function duplicateSelection(rowsCount: number, renameNumbers: boolean, firstSheetRows: any[]): void {
+  // rowsCount represents number of data rows after header; create exactly rowsCount clones,
+  // then delete the original selection so total equals rowsCount.
+  const duplicatesToCreate = Math.max(0, rowsCount);
+  if (duplicatesToCreate === 0) return;
+
+  const selection = figma.currentPage.selection.slice();
+  if (selection.length === 0) return;
+
+  const createdNodes: SceneNode[] = [];
+
+  for (let i = 0; i < duplicatesToCreate; i++) {
+    selection.forEach((node) => {
+      const maybeClone = (node as any).clone ? (node as any).clone() : null;
+      const clone: SceneNode = maybeClone as SceneNode;
+      if (!clone) { return; }
+      if ('x' in clone && 'y' in clone) {
+        clone.x = clone.x + (i) * 20;
+        clone.y = clone.y + (i) * 20;
+      }
+      node.parent.insertChild(node.parent.children.indexOf(node) + 1, clone);
+
+      // Renaming logic
+      try {
+        const originalName = node.name || '';
+        const isLayerName = originalName.startsWith(layerNamePrefix);
+        if (isLayerName) {
+          const baseNameNoPrefix = originalName.replace(layerNamePrefix, '');
+          // If CSV has a header matching the name (case-sensitive match), use that value
+          const headerIndex = firstSheetRows.length > 0 ? Object.keys(firstSheetRows[0]).indexOf(baseNameNoPrefix) : -1;
+          if (headerIndex !== -1) {
+            const valueForRow = firstSheetRows[i]?.[baseNameNoPrefix];
+            if (typeof valueForRow === 'string' && valueForRow.trim() !== '') {
+              clone.name = `${layerNamePrefix}${valueForRow}`;
+            } else if (renameNumbers) {
+              clone.name = `${originalName} - ${i + 1}`;
+            } else {
+              clone.name = originalName;
+            }
+          } else if (renameNumbers) {
+            clone.name = `${originalName} - ${i + 1}`;
+          } else {
+            clone.name = originalName;
+          }
+        }
+      } catch {}
+
+      createdNodes.push(clone);
+    });
+  }
+
+  // Remove originals
+  selection.forEach((node) => {
+    try { node.remove(); } catch {}
+  });
+
+  // Select only the newly created clones so sync applies to them
+  figma.currentPage.selection = createdNodes;
 }
 
 function checkIfFinished(outputVars: OutputVars, processed: boolean = true): void {
@@ -833,6 +895,19 @@ function getSpreadsheetData(url: string, type: UrlDataType, spreadsheetData: Spr
   return {
     url: dataUrl,
     type: dataType
+  }
+}
+
+function isCsvUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  if (lower.endsWith('.csv')) return true;
+  try {
+    const u = new URL(url);
+    const pathnameCsv = u.pathname.toLowerCase().endsWith('.csv');
+    const contentParamCsv = (u.searchParams.get('format') || u.searchParams.get('alt') || '').toLowerCase() === 'csv';
+    return pathnameCsv || contentParamCsv;
+  } catch {
+    return false;
   }
 }
 

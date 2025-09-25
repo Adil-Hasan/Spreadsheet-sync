@@ -68,6 +68,48 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+// simple UI --------------------
+.simple-ui {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  .simple-title {
+    font-size: 30px;
+    font-weight: 800;
+    text-align: center;
+    margin: 20px 0 10px 0;
+  }
+
+  .simple-list {
+    list-style: disc;
+    padding-left: 24px;
+    margin: 0 20px;
+
+    li {
+      font-size: 18px;
+      line-height: 1.6;
+      margin: 8px 0;
+    }
+  }
+
+  .simple-cta-section {
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px 20px 20px;
+  }
+
+  .simple-cta {
+    height: 48px;
+    min-width: 220px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: 800;
+    box-shadow: 0 6px 16px rgba(0,0,0,.15);
+  }
+}
+
 
 
 // reset --------------------
@@ -85,6 +127,36 @@ p {
   height: 100%;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.instructions {
+  max-width: 320px;
+  margin-bottom: 16px;
+  color: $color-text;
+  font-size: 12px;
+
+  .title { font-weight: 700; margin-bottom: 6px; text-align: center; }
+  ol { margin: 0; padding-left: 18px; }
+  li { margin: 4px 0; line-height: 1.4; }
+  code { background: rgba(0,0,0,.05); padding: 0 4px; border-radius: 4px; }
+}
+
+.rename-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+
+  input {
+    margin-right: 6px;
+    appearance: auto !important;
+    -webkit-appearance: checkbox !important;
+    -moz-appearance: checkbox !important;
+    width: 14px;
+    height: 14px;
+  }
 }
 
 
@@ -174,6 +246,23 @@ button {
     color: $color-disabled-text;
     cursor: not-allowed;
   }
+}
+
+// shadcn-like button --------------------
+.shadcn-btn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  background: #111827;
+  color: white;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+
+  &:hover { background: #0f172a; }
+  &:active { background: #0b1222; }
+  &:focus { box-shadow: 0 0 0 2px rgba(59,130,246,.5); }
+  &:disabled { opacity: .8; cursor: not-allowed; }
 }
 
 select,

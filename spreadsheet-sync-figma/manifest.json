@@ -1,15 +1,13 @@
 {
-  "name": "Spreadsheet Sync (Sheets/CSV)",
+  "name": "Sheet to Layers",
+  "id": "com.spreadsheet.sync.figma",
   "api": "1.0.0",
+  "editorType": ["figma"],
   "main": "dist/code.js",
   "ui": "dist/ui.html",
-  "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": [
-      "https://*",
-      "http://*",
-      "data:"
-    ]
+    "allowedDomains": ["*"],
+    "reasoning": "The plugin fetches user-provided CSV files from arbitrary URLs and accesses Google Sheets API endpoints to retrieve spreadsheet data. Allowing all domains ensures users can sync from any hosted CSV or image link without needing to whitelist each domain."
   }
 }
 
