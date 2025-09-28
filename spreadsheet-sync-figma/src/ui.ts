@@ -6,6 +6,8 @@ import { appWindowMinSize, appWindowMinSizeAdvancedMode, layerNamePrefix } from 
 
 // @ts-ignore
 import tippy from 'tippy.js';
+// @ts-ignore
+import * as XLSX from 'xlsx';
 
 import 'tippy.js/dist/tippy.css';
 import 'tippy.js/animations/shift-away-subtle.css';
@@ -51,6 +53,8 @@ window.onmessage = async (event) => {
   if (event.data?.pluginMessage?.type) {
     if (event.data.pluginMessage.type === 'init') {
       generateTooltips();
+      // Resize window to fit content after initialization
+      setTimeout(() => resizeWindowToContent(), 100);
     }
 
     if (event.data.pluginMessage.type === 'process-image') {
@@ -265,10 +269,21 @@ window.onmessage = async (event) => {
             sheets: spreadsheetDataSheetsInfo
           };
 
+          // Sheet is accessible, mark as public
+          sheetIsPublic = true;
+          setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
+          updatePreviewButton(getInputUrlValue());
+          toggleReCheckButton(false);
+
           // updateSheetToggleButtons();
         })
         .catch((error) => {
           console.error('ERROR:', error);
+          // Sheet is not accessible, mark as private
+          sheetIsPublic = false;
+          setUrlRequestStatus(RequestType.ERROR, RequestMessage.SHEET_NOT_PUBLIC);
+          updatePreviewButton(getInputUrlValue());
+          toggleReCheckButton(false);
         })
     }
 
@@ -337,11 +352,15 @@ window.onmessage = async (event) => {
 // listeners: add input url listeners (not present in simplified UI)
 const apiUrlInput = document.getElementById('api-url') as HTMLInputElement | null;
 if (apiUrlInput) {
-  apiUrlInput.addEventListener('input', () => { debounce(checkUrlPublic()); updateInputUrl(); }, false);
+  const debouncedCheckUrl = debounce(checkUrlPublic, 500); // 500ms delay instead of 1000ms
+  apiUrlInput.addEventListener('input', () => { 
+    debouncedCheckUrl(); 
+    updateInputUrl(); 
+  }, false);
   apiUrlInput.addEventListener('focus', (event) => { (event.target as HTMLInputElement).select(); updateInputUrl(); });
 }
 
-// listeners: CSV file upload
+// listeners: CSV/XLSX file upload
 const csvInput = document.getElementById('csv-file') as HTMLInputElement;
 if (csvInput) {
   csvInput.addEventListener('change', async () => {
@@ -351,9 +370,34 @@ if (csvInput) {
       uploadedCsvTitle = null;
       return;
     }
-    const text = await file.text();
-    uploadedCsvTable = parseCsvToTable(text);
-    uploadedCsvTitle = (file.name || 'CSV').replace(/\.csv$/i, '') || 'CSV';
+
+    let tableData: SpreadsheetSingleSheetData;
+    let fileName = file.name || 'File';
+    
+    // Check if it's an XLSX file
+    if (file.name.toLowerCase().endsWith('.xlsx')) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        tableData = jsonData as SpreadsheetSingleSheetData;
+        fileName = fileName.replace(/\.xlsx$/i, '');
+      } catch (error) {
+        console.error('Error parsing XLSX file:', error);
+        alert('Error parsing XLSX file. Please make sure it\'s a valid Excel file.');
+        return;
+      }
+    } else {
+      // Handle CSV file
+      const text = await file.text();
+      tableData = parseCsvToTable(text);
+      fileName = fileName.replace(/\.csv$/i, '');
+    }
+
+    uploadedCsvTable = tableData;
+    uploadedCsvTitle = fileName || 'File';
 
     // Build spreadsheet meta and send to plugin immediately
     spreadsheetData = {
@@ -504,6 +548,38 @@ function resizeWindow(event) {
   };
   parent.postMessage( { pluginMessage: { type: 'window-resize', size: size }}, '*');
 }
+
+// Auto-resize window to fit content
+function resizeWindowToContent() {
+  const wrapper = document.querySelector('.wrapper');
+  if (!wrapper) return;
+  
+  // Get the actual content height
+  const contentHeight = wrapper.scrollHeight;
+  const contentWidth = wrapper.scrollWidth;
+  
+  // Add some padding for better appearance
+  const padding = 20;
+  const newHeight = Math.max(appWindowMinSize.h, contentHeight + padding);
+  const newWidth = Math.max(appWindowMinSize.w, contentWidth + padding);
+  
+  const size: WindowSize = {
+    w: newWidth,
+    h: newHeight
+  };
+  
+  parent.postMessage({ pluginMessage: { type: 'window-resize', size: size }}, '*');
+}
+
+// Resize window when DOM is fully loaded
+window.addEventListener('load', () => {
+  setTimeout(() => resizeWindowToContent(), 100);
+});
+
+// Also resize when DOM content is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => resizeWindowToContent(), 100);
+});
 if (cornerResize) {
   cornerResize.onpointerdown = (event) => {
     cornerResize.onpointermove = resizeWindow as any;
@@ -662,9 +738,9 @@ function checkUrlIsValid(url: string): boolean {
   var validLink = new RegExp(/^(ftp|http|https):\/\/[^ "]+$/);
   const urlValid = validLink.test(url.trim());
   const urlPrefix = 'https://docs.google.com/spreadsheets';
-  const isCsv = isCsvUrl(url);
+  const isFile = isFileUrl(url);
 
-  return urlValid && (url.startsWith(urlPrefix) || isCsv);
+  return urlValid && (url.startsWith(urlPrefix) || isFile);
 }
 
 // url: check if google spreadsheet is public
@@ -673,10 +749,13 @@ function checkUrlPublic() {
 
   updatePreviewButton(url);
 
-  if (!checkUrlIsValid(url)) { setUrlRequestStatus(RequestType.RESET); return; }
+  if (!checkUrlIsValid(url)) { 
+    setUrlRequestStatus(RequestType.RESET); 
+    return; 
+  }
 
   // CSV doesn't require Google Sheets public check
-  if (isCsvUrl(url)) {
+  if (isFileUrl(url)) {
     sheetIsPublic = true;
     setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
     updatePreviewButton(url);
@@ -684,10 +763,26 @@ function checkUrlPublic() {
     return;
   }
 
+  // Show checking status for Google Sheets
+  showCheckingStatus();
+
   window.parent.postMessage(
     { pluginMessage: { type: 'get-data', url, isPreview: false, isCheckUrl: true } },
     '*'
   );
+}
+
+// Show checking status
+function showCheckingStatus() {
+  const publicStatus = document.getElementById('sheet-public-status') as HTMLElement | null;
+  const statusText = publicStatus?.querySelector('.status-text') as HTMLElement | null;
+
+  if (publicStatus && statusText) {
+    removeCls(publicStatus, ['status-checking', 'status-public', 'status-private', 'status-error']);
+    removeCls(publicStatus, 'hidden');
+    addCls(publicStatus, 'status-checking');
+    statusText.innerText = 'Checking if sheet is public...';
+  }
 }
 
 
@@ -697,33 +792,64 @@ function checkUrlPublic() {
 function fetchData(data: any): Promise<any> {
   setUrlRequestStatus(RequestType.RESET);
 
+  console.log('fetchData called with URL:', data.pluginMessage.url);
+
   const dataFetch = new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('GET', data.pluginMessage.url);
-    request.responseType = 'text';
+    
+    // Set response type based on file type
+    const url = data.pluginMessage.url;
+    if (url.toLowerCase().endsWith('.xlsx')) {
+      request.responseType = 'arraybuffer';
+    } else {
+      request.responseType = 'text';
+    }
+    
     request.onerror = () => {
+      console.error('XMLHttpRequest error for URL:', data.pluginMessage.url);
       setUrlRequestStatus(RequestType.ERROR, RequestMessage.INVALID_LINK);
       reject(RequestMessage.ERROR_GENERIC);
     }
     request.onload = () => {
-      // Try JSON (Google Sheets). If parse fails, treat as CSV/text and resolve
-      try {
-        const jsonParsed = JSON.parse(request.response);
-        if (jsonParsed) {
-          if (jsonParsed.error) {
-            sheetIsPublic = false;
-            updatePreviewButton(getInputUrlValue());
-            setUrlRequestStatus(RequestType.ERROR, RequestMessage.SHEET_NOT_PUBLIC);
-            reject(RequestMessage.ERROR_GENERIC);
-          } else {
-            sheetIsPublic = true;
-            updatePreviewButton(getInputUrlValue());
-            setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
-            resolve(request.response);
-          }
+      console.log('XMLHttpRequest loaded, status:', request.status, 'response:', request.response);
+      // Handle XLSX files
+      if (url.toLowerCase().endsWith('.xlsx')) {
+        try {
+          const workbook = XLSX.read(request.response, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const csvText = jsonData.map(row => row.join(',')).join('\n');
+          sheetIsPublic = true;
+          updatePreviewButton(getInputUrlValue());
+          setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
+          resolve(csvText);
+        } catch (error) {
+          console.error('Error parsing XLSX from URL:', error);
+          setUrlRequestStatus(RequestType.ERROR, RequestMessage.INVALID_LINK);
+          reject(RequestMessage.ERROR_GENERIC);
         }
-      } catch (e) {
-        resolve(request.response);
+      } else {
+        // Try JSON (Google Sheets). If parse fails, treat as CSV/text and resolve
+        try {
+          const jsonParsed = JSON.parse(request.response);
+          if (jsonParsed) {
+            if (jsonParsed.error) {
+              sheetIsPublic = false;
+              updatePreviewButton(getInputUrlValue());
+              setUrlRequestStatus(RequestType.ERROR, RequestMessage.SHEET_NOT_PUBLIC);
+              reject(RequestMessage.ERROR_GENERIC);
+            } else {
+              sheetIsPublic = true;
+              updatePreviewButton(getInputUrlValue());
+              setUrlRequestStatus(RequestType.SUCCESS, RequestMessage.SHEET_PUBLIC);
+              resolve(request.response);
+            }
+          }
+        } catch (e) {
+          resolve(request.response);
+        }
       }
 
       toggleReCheckButton(false);
@@ -752,35 +878,52 @@ function fetchData(data: any): Promise<any> {
 // }
 
 function setUrlRequestStatus(requestType: RequestType, message: RequestMessage = null): void {
-  const sectionHowTo = document.getElementById('section-how-to') as HTMLElement | null;
-  const publishedStatus = document.getElementById('publish-status') as HTMLElement | null;
+  const publicStatus = document.getElementById('sheet-public-status') as HTMLElement | null;
+  const statusText = publicStatus?.querySelector('.status-text') as HTMLElement | null;
 
   if (requestType === RequestType.RESET) {
-    if (sectionHowTo) removeClsStartingWith(sectionHowTo, 'bg-');
-    if (publishedStatus) { removeCls(publishedStatus, ['text-success', 'text-error']); addCls(publishedStatus, 'hidden'); }
+    if (publicStatus) {
+      removeCls(publicStatus, ['status-checking', 'status-public', 'status-private', 'status-error']);
+      addCls(publicStatus, 'hidden');
+    }
   }
 
   if (requestType === RequestType.ERROR) {
-    if (sectionHowTo) { removeClsStartingWith(sectionHowTo, 'bg-'); addCls(sectionHowTo, 'bg-error'); }
-    if (publishedStatus) { addCls(publishedStatus, 'text-error'); removeCls(publishedStatus, 'hidden'); publishedStatus.innerText = message; }
+    if (publicStatus && statusText) {
+      removeCls(publicStatus, ['status-checking', 'status-public', 'status-private', 'status-error']);
+      removeCls(publicStatus, 'hidden');
+      
+      if (message === RequestMessage.SHEET_NOT_PUBLIC) {
+        addCls(publicStatus, 'status-private');
+        statusText.innerText = 'Sheet is private - make it public to use';
+      } else {
+        addCls(publicStatus, 'status-error');
+        statusText.innerText = message || 'Error checking sheet';
+      }
+    }
     toggleReCheckButton(false);
   }
 
   if (requestType === RequestType.SUCCESS) {
-    if (sectionHowTo) { removeClsStartingWith(sectionHowTo, 'bg-'); addCls(sectionHowTo, 'bg-success'); }
-    if (publishedStatus) { addCls(publishedStatus, 'text-success'); removeCls(publishedStatus, 'hidden'); publishedStatus.innerText = message; }
+    if (publicStatus && statusText) {
+      removeCls(publicStatus, ['status-checking', 'status-public', 'status-private', 'status-error']);
+      removeCls(publicStatus, 'hidden');
+      addCls(publicStatus, 'status-public');
+      statusText.innerText = 'Sheet is public and accessible';
+    }
   }
 }
 
 // csv --------------------
-function isCsvUrl(url: string): boolean {
+function isFileUrl(url: string): boolean {
   const lower = url.toLowerCase();
-  if (lower.endsWith('.csv')) return true;
+  if (lower.endsWith('.csv') || lower.endsWith('.xlsx')) return true;
   try {
     const u = new URL(url);
     const pathnameCsv = u.pathname.toLowerCase().endsWith('.csv');
+    const pathnameXlsx = u.pathname.toLowerCase().endsWith('.xlsx');
     const contentParamCsv = (u.searchParams.get('format') || u.searchParams.get('alt') || '').toLowerCase() === 'csv';
-    return pathnameCsv || contentParamCsv;
+    return pathnameCsv || pathnameXlsx || contentParamCsv;
   } catch {
     return false;
   }

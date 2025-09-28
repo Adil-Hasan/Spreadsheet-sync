@@ -131,7 +131,7 @@ figma.ui.onmessage = async (msg) => {
       urlData = getSpreadsheetData(msg.url, UrlDataType.SHEET);
       msgType = 'get-api-data-sheet';
     } else {
-      if (isCsvUrl(msg.url)) {
+      if (isFileUrl(msg.url)) {
         urlData = { url: msg.url, type: UrlDataType.VALUES };
       } else {
         urlData = getSpreadsheetData(msg.url, UrlDataType.VALUES, msg.spreadsheetData);
@@ -423,7 +423,7 @@ function duplicateSelection(rowsCount: number, renameNumbers: boolean, firstShee
           const headerIndex = firstSheetRows.length > 0 ? Object.keys(firstSheetRows[0]).indexOf(baseNameNoPrefix) : -1;
           if (headerIndex !== -1) {
             const valueForRow = firstSheetRows[i]?.[baseNameNoPrefix];
-            if (typeof valueForRow === 'string' && valueForRow.trim() !== '') {
+            if (valueForRow !== undefined && valueForRow !== null && valueForRow !== '') {
               clone.name = `${layerNamePrefix}${valueForRow}`;
             } else if (renameNumbers) {
               clone.name = `${originalName} - ${i + 1}`;
@@ -699,8 +699,9 @@ function getValueFromLayerName(data: DataProcess[], layerName: string, layerSuff
   if (dataRow === undefined || positionIndex === undefined) {
     value = null;
   } else {
-    if (data[dataRow].data[positionIndex][layerName]) {
-      value = data[dataRow].data[positionIndex][layerName];
+    const cellValue = data[dataRow].data[positionIndex][layerName];
+    if (cellValue !== undefined && cellValue !== null && cellValue !== '') {
+      value = String(cellValue);
     } else {
       value = null;
     }
@@ -876,9 +877,12 @@ function getSpreadsheetData(url: string, type: UrlDataType, spreadsheetData: Spr
   let dataUrl: string = `${sheetUrlPrefix}${sheetId}/values`;
   let dataType: UrlDataType;
 
+  console.log('getSpreadsheetData called with:', { url, type, sheetId, API_KEY });
+
   if (type === UrlDataType.SHEET) {
     dataUrl = `${sheetUrlPrefix}${sheetId}?alt=json&key=${API_KEY}`;
     dataType = UrlDataType.SHEET;
+    console.log('Generated SHEET API URL:', dataUrl);
   }
 
   if (type === UrlDataType.VALUES) {
@@ -890,6 +894,7 @@ function getSpreadsheetData(url: string, type: UrlDataType, spreadsheetData: Spr
       dataUrl = `${dataUrl}/${sheetRange}?${sheetUrlSuffix}`;
     }
     dataType = UrlDataType.VALUES;
+    console.log('Generated VALUES API URL:', dataUrl);
   }
 
   return {
@@ -898,14 +903,15 @@ function getSpreadsheetData(url: string, type: UrlDataType, spreadsheetData: Spr
   }
 }
 
-function isCsvUrl(url: string): boolean {
+function isFileUrl(url: string): boolean {
   const lower = url.toLowerCase();
-  if (lower.endsWith('.csv')) return true;
+  if (lower.endsWith('.csv') || lower.endsWith('.xlsx')) return true;
   try {
     const u = new URL(url);
     const pathnameCsv = u.pathname.toLowerCase().endsWith('.csv');
+    const pathnameXlsx = u.pathname.toLowerCase().endsWith('.xlsx');
     const contentParamCsv = (u.searchParams.get('format') || u.searchParams.get('alt') || '').toLowerCase() === 'csv';
-    return pathnameCsv || contentParamCsv;
+    return pathnameCsv || pathnameXlsx || contentParamCsv;
   } catch {
     return false;
   }
@@ -925,7 +931,7 @@ function spreadsheetDataToJson(data) {
               .slice(2);
             key = uid;
           }
-          return (obj[key] = value || '');
+          return (obj[key] = value !== undefined && value !== null ? value : '');
         });
         return obj;
       }

@@ -2,13 +2,44 @@
   <div class="instructions">
     <p class="title">How to use</p>
     <ol>
-      <li>Prepare a CSV. First row is headers; each column name maps to a Figma layer named with the <code>#</code> prefix (e.g., <code>#Title</code>, <code>#Image</code>).</li>
+      <li>Prepare a CSV/XLSX file or use a public Google Sheet. First row is headers; each column name maps to a Figma layer named with the <code>#</code> prefix (e.g., <code>#Title</code>, <code>#Image</code>).</li>
       <li>In Figma, select the frame/group whose children contain layers named with <code>#</code> columns you want to populate.</li>
-      <li>Click Upload CSV. The plugin will duplicate the selection to match row count and populate from the CSV.</li>
-      <li>Optional: Enable “Rename with numbers” to auto-number when no matching header exists.</li>
+      <li>Either upload a file or paste a Google Sheet URL, then click Sync. The plugin will duplicate the selection to match row count and populate from the data.</li>
+      <li>Optional: Enable "Rename with numbers" to auto-number when no matching header exists.</li>
     </ol>
   </div>
-  <input id="csv-file" type="file" accept=".csv,text/csv" style="display:none" />
-  <label class="rename-toggle"><input id="rename-numbers" type="checkbox" /> <span>Rename with numbers</span></label>
-  <button id="btn-upload-csv" class="shadcn-btn">Upload CSV</button>
+  
+  <!-- Google Sheets URL Input -->
+  <div class="input-section">
+    <label for="api-url" class="input-label">Google Sheet URL (public)</label>
+    <div class="input-group">
+      <input id="api-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." class="input-field" />
+      <div id="sheet-url-valid" class="url-status hidden"></div>
+    </div>
+    <div class="input-help">Make sure your Google Sheet is set to "Anyone with the link can view"</div>
+    <div id="sheet-public-status" class="public-status hidden">
+      <div class="status-indicator">
+        <div class="status-icon"></div>
+        <span class="status-text"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Upload -->
+  <div class="input-section">
+    <label class="input-label">Or upload a file</label>
+    <input id="csv-file" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" />
+    <button id="btn-upload-csv" class="shadcn-btn secondary">Upload CSV/XLSX</button>
+  </div>
+
+  <!-- Options -->
+  <div class="options-section">
+    <label class="rename-toggle"><input id="rename-numbers" type="checkbox" /> <span>Rename with numbers</span></label>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="action-buttons">
+    <button id="preview-data" class="shadcn-btn secondary">Preview Data</button>
+    <button id="sync" class="shadcn-btn primary">Sync to Figma</button>
+  </div>
 </div>
